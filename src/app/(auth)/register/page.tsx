@@ -1,5 +1,5 @@
 "use client";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -18,6 +18,7 @@ import { useEffect } from "react";
 import { AuthRegisterType } from "@/type/auth-type";
 import { authRequest } from "@/lib/api/auth-api";
 import { useRouter } from "next/navigation";
+
 const RegisterSchema = z.object({
   user_name: z.string().min(2, {
     message: "Username must be at least 2 characters.",
@@ -34,9 +35,11 @@ const RegisterSchema = z.object({
 });
 
 const Register = () => {
-  const { AUTH_REGISTER } = authRequest();
+  const { AUTH_REGISTER, handleAuthSuccess } = authRequest();
   const { device, fetchDeviceInfo } = useDeviceStore();
   const router = useRouter();
+  const queryClient = useQueryClient();
+
   console.log(device);
   const form = useForm<z.infer<typeof RegisterSchema>>({
     resolver: zodResolver(RegisterSchema),
@@ -53,7 +56,13 @@ const Register = () => {
     mutationFn: (payload: AuthRegisterType) => AUTH_REGISTER(payload),
     onSuccess: (data) => {
       console.log("response data", data);
-      router.push("/profile");
+      if (handleAuthSuccess(data, queryClient)) {
+        // Navigate to profile page
+        router.push("/profile");
+      }
+    },
+    onError: (error) => {
+      console.error("Registration failed:", error);
     },
   });
 
@@ -67,6 +76,7 @@ const Register = () => {
       ip_address: device?.ip_address,
     });
   }
+
   useEffect(() => {
     fetchDeviceInfo();
   }, [fetchDeviceInfo]);

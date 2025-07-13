@@ -12,10 +12,12 @@ import { Input } from "@/components/ui/input";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import z from "zod";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { authRequest } from "@/lib/api/auth-api";
 import { AuthLoginType } from "@/type/auth-type";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/store/auth-store";
+import { useEffect } from "react";
 
 const LoginSchema = z.object({
   user_name: z.string().min(2, {
@@ -28,7 +30,17 @@ const LoginSchema = z.object({
 
 const Login = () => {
   const navigate = useRouter();
-  const { AUTH_LOGIN } = authRequest();
+  const queryClient = useQueryClient();
+  const { AUTH_LOGIN, handleAuthSuccess } = authRequest();
+  const { isAuthenticated, isReady } = useAuth();
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isReady && isAuthenticated) {
+      navigate.push("/profile");
+    }
+  }, [isReady, isAuthenticated, navigate]);
+
   const form = useForm<z.infer<typeof LoginSchema>>({
     resolver: zodResolver(LoginSchema),
     defaultValues: {
@@ -41,9 +53,13 @@ const Login = () => {
     mutationKey: ["login"],
     mutationFn: (payload: AuthLoginType) => AUTH_LOGIN(payload),
     onSuccess: (data) => {
-      if (data) {
+      if (handleAuthSuccess(data, queryClient)) {
+        // Navigate to profile page
         navigate.push("/profile");
       }
+    },
+    onError: (error) => {
+      console.error("Login failed:", error);
     },
   });
 
@@ -51,6 +67,16 @@ const Login = () => {
     console.log(data, "===data login");
     mutate(data);
   };
+
+  // Show loading while auth state is being determined
+  if (!isReady) {
+    return (
+      <div className="min-h-screen flex justify-center items-center">
+        <h1>Loading...</h1>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto w-full max-w-md shadow-lg rounded-2xl p-4 mt-12">
       <Form {...form}>

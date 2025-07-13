@@ -2,26 +2,24 @@ import { CookieName } from "@/type/cookie-enum";
 import axios, { type AxiosRequestConfig } from "axios";
 import Cookies from "js-cookie";
 import { useAuthStore } from "@/store/auth-store";
-// import { Store } from '@reduxjs/toolkit';
 
-// export const injectStore = (_store: Store) => {};
+// Extend AxiosRequestConfig to include retry flag
+interface ExtendedAxiosRequestConfig extends AxiosRequestConfig {
+  _retry?: boolean;
+}
 
 const axiosInstance = axios.create({
   baseURL: "http://localhost:3000/api/v1", // Replace with your API base URL
   withCredentials: true,
   headers: {
     "Content-Type": "application/json",
-    // Add any other headers or configurations you need
   },
-  // timeout: 1000,
 });
 
 interface RetryQueueItem {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resolve: (value?: any) => void;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   reject: (error?: any) => void;
-  config: AxiosRequestConfig;
+  config: ExtendedAxiosRequestConfig;
 }
 
 // Create a list to hold the request queue
@@ -33,13 +31,13 @@ let isRefreshing = false;
 // Add a request interceptor
 axiosInstance.interceptors.request.use(
   (config) => {
-    //  const isLogin = useAppSelector((state) => state.auth.isLogin);
-    // You can modify the request config here, e.g., add authentication headers
-    // config.headers.Authorization = `Bearer ${getToken()}`;
-    // const accessToken = Cookies.get("accessToken");
     const accessToken = useAuthStore.getState().accessToken;
 
-    config.headers["Authorization"] = `${accessToken}`;
+    // Only add Authorization header if token exists
+    if (accessToken) {
+      config.headers = config.headers || {};
+      config.headers["Authorization"] = `Bearer ${accessToken}`;
+    }
 
     return config;
   },
@@ -55,71 +53,81 @@ axiosInstance.interceptors.response.use(
     return response.data;
   },
   async (error) => {
-    const originalConfig: AxiosRequestConfig = error.config;
+    const originalConfig: ExtendedAxiosRequestConfig = error.config;
+
     if (
       error.response &&
-      error.response.status === 401
-      // && !originalConfig._retry
+      error.response.status === 401 &&
+      !originalConfig._retry
     ) {
-      // originalConfig._retry = true;
+      originalConfig._retry = true;
+
       if (!isRefreshing) {
+        isRefreshing = true;
+
         try {
-          // const refreshToken = Cookies.get(CookieName.REFRESH_TOKEN);
-          // const refreshToken = useAuthStore.getState().refreshToken;
           const response = await axiosInstance({
             method: "POST",
-            url: `http://localhost:3000/api/v1/auth/refresh-token`,
-            // data: {
-            //   refreshToken: refreshToken,
-            // },
+            url: `/auth/refresh-token`,
           });
-          const { accessToken } = response.data;
-          Cookies.set(CookieName.ACCESS_TOKEN, accessToken);
-          error.config.headers["Authorization"] = `Bearer ${accessToken}`;
 
-          // Retry all requests in the queue with the new token
-          refreshAndRetryQueue.forEach(({ config, resolve, reject }) => {
-            axiosInstance
-              .request(config)
-              .then((response) => resolve(response))
-              .catch((err) => reject(err));
-          });
+          const { accessToken, refreshToken } = response.data;
+
+          if (accessToken) {
+            // Update tokens in store and cookies
+            const updateTokens = useAuthStore.getState().updateTokens;
+            updateTokens(accessToken, refreshToken);
+
+            // Update the original request's authorization header
+            originalConfig.headers = originalConfig.headers || {};
+            originalConfig.headers["Authorization"] = `Bearer ${accessToken}`;
+
+            // Retry all requests in the queue with the new token
+            refreshAndRetryQueue.forEach(({ config, resolve, reject }) => {
+              config.headers = config.headers || {};
+              config.headers["Authorization"] = `Bearer ${accessToken}`;
+              axiosInstance
+                .request(config)
+                .then((response) => resolve(response))
+                .catch((err) => reject(err));
+            });
+
+            // Clear the queue
+            refreshAndRetryQueue.length = 0;
+
+            // Retry the original request
+            return await axiosInstance(originalConfig);
+          }
+        } catch (refreshError) {
+          // Handle token refresh error
+          console.error("Token refresh failed:", refreshError);
+
+          // Clear auth store and redirect to login
+          const logout = useAuthStore.getState().logout;
+          logout();
 
           // Clear the queue
           refreshAndRetryQueue.length = 0;
 
-          // Retry the original request
-          // return axiosInstance(originalRequest);
-          return await axiosInstance(originalConfig);
-          // const responsible = await axiosInstance(error.config);
-          // return responsible.data;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } catch (refreshError: any) {
-          // Handle token refresh error
-          // You can clear all storage and redirect the user to the login page
-          if (refreshError.response && refreshError.response.data) {
-            console.log("error 1");
-            // useAuthStore.getState().logout();
-            return Promise.reject(refreshError.response.data);
-          }
           return Promise.reject(refreshError);
         } finally {
           isRefreshing = false;
         }
       }
+
       // Add the original request to the queue
-      return new Promise<void>((resolve, reject) => {
+      return new Promise((resolve, reject) => {
         refreshAndRetryQueue.push({ config: originalConfig, resolve, reject });
       });
     }
-    if (error.response && error.response.status === 403) {
-      // Call the function to log out the user
-      console.log("error 2");
-      // useAuthStore.getState().logout();
 
+    if (error.response && error.response.status === 403) {
+      // Handle forbidden error
+      console.error("Access forbidden:", error.response.data);
       return Promise.reject(error.response.data);
     }
-    // Handle specific error cases here if needed
+
+    // Handle other error cases
     return Promise.reject(error);
   }
 );

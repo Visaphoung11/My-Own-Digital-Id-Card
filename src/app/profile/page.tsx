@@ -16,18 +16,78 @@ import MinimalCard from "@/components/profile-card/minimal-card";
 import ModernCard from "@/components/profile-card/modern-card";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import LogoutButton from "@/components/ui/LogoutButton";
+import { useAuth } from "@/store/auth-store";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function Profile() {
   const { PROFILE } = userRequest();
-  const { data: me, isLoading } = useQuery({
-    queryKey: ["profile"],
+  const { accessToken, userId, isReady, isAuthenticated } = useAuth();
+  const router = useRouter();
+
+  // Only redirect if ready and not authenticated
+  useEffect(() => {
+    if (isReady && !isAuthenticated) {
+      router.push("/login");
+    }
+  }, [isReady, isAuthenticated, router]);
+
+  const {
+    data: me,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ["profile", accessToken, userId],
     queryFn: async () => PROFILE(),
+    enabled: isAuthenticated && isReady,
+    retry: false,
+    staleTime: 0, // Always consider data stale to ensure fresh data
+    gcTime: 0, // Don't cache the data
   });
 
-  if (isLoading) {
+  // Show loading state while not ready
+  if (!isReady) {
     return (
       <div className="min-h-screen flex justify-center items-center">
         <h1>Loading...</h1>
+      </div>
+    );
+  }
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex justify-center items-center">
+        <h1>Loading profile...</h1>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen flex justify-center items-center">
+        <div className="text-center">
+          <h1 className="text-xl font-semibold text-red-600 mb-4">
+            Error loading profile
+          </h1>
+          <p className="text-gray-600 mb-4">Please try logging in again</p>
+          <div className="space-x-4">
+            <Button onClick={() => refetch()}>Retry</Button>
+            <Button onClick={() => router.push("/login")}>Go to Login</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show loading if no data yet
+  if (!me?.data) {
+    return (
+      <div className="min-h-screen flex justify-center items-center">
+        <h1>Loading profile data...</h1>
       </div>
     );
   }
@@ -92,6 +152,7 @@ export default function Profile() {
                 Edit
               </Button>
             </Link>
+            <LogoutButton />
           </div>
 
           {/* Social Icons */}
