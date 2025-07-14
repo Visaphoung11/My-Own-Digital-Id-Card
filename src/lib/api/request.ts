@@ -142,8 +142,18 @@ export const cardRequest = () => {
     });
   };
 
+  // Add update card function
+  const UPDATE_CARD = async (cardId: string, payload: any) => {
+    return await axiosInstance({
+      url: `/card/update-card/${cardId}`,
+      method: "PUT",
+      data: payload,
+    });
+  };
+
   return {
     CREATE_CARD,
+    UPDATE_CARD,
   };
 };
 

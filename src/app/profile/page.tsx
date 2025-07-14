@@ -23,12 +23,13 @@ import { useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { cardRequest } from "@/lib/api/request";
 import { useState } from "react";
+import axios from "axios";
 
 export default function Profile() {
   const { PROFILE } = userRequest();
   const { accessToken, userId, isReady, isAuthenticated } = useAuth();
   const router = useRouter();
-  const { CREATE_CARD } = cardRequest();
+  const { CREATE_CARD, UPDATE_CARD } = cardRequest();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [formData, setFormData] = useState({
     gender: "male",
@@ -45,24 +46,8 @@ export default function Profile() {
       },
     ],
   });
-
-  const createCardMutation = useMutation({
-    mutationFn: (payload: any) => CREATE_CARD(payload),
-    onSuccess: () => {
-      setShowCreateForm(false);
-      refetch();
-    },
-    onError: (err) => {
-      alert("Failed to create card");
-    },
-  });
-
-  // Only redirect if ready and not authenticated
-  useEffect(() => {
-    if (isReady && !isAuthenticated) {
-      router.push("/login");
-    }
-  }, [isReady, isAuthenticated, router]);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editFormData, setEditFormData] = useState<any>(null);
 
   const {
     data: me,
@@ -77,6 +62,50 @@ export default function Profile() {
     staleTime: 0, // Always consider data stale to ensure fresh data
     gcTime: 0, // Don't cache the data
   });
+
+  // Avatar upload state (must be after 'me' is declared)
+  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
+  const [uploading, setUploading] = useState(false);
+  useEffect(() => {
+    if (me?.data?.avatar) {
+      setAvatarUrl(me.data.avatar);
+    }
+  }, [me?.data?.avatar]);
+
+  const createCardMutation = useMutation({
+    mutationFn: (payload: any) => CREATE_CARD(payload),
+    onSuccess: () => {
+      setShowCreateForm(false);
+      refetch();
+    },
+    onError: (err) => {
+      alert("Failed to create card");
+    },
+  });
+
+  // Add mutation for updating card
+  const updateCardMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const cardId = me?.data?.idCard?.[0]?.id;
+      if (!cardId) throw new Error("No card");
+      return UPDATE_CARD(cardId, payload);
+    },
+    onSuccess: () => {
+      refetch();
+      setShowEditForm(false);
+      alert("Profile updated!");
+    },
+    onError: () => {
+      alert("Failed to update profile");
+    },
+  });
+
+  // Only redirect if ready and not authenticated
+  useEffect(() => {
+    if (isReady && !isAuthenticated) {
+      router.push("/login");
+    }
+  }, [isReady, isAuthenticated, router]);
 
   // Show loading state while not ready
   if (!isReady) {
@@ -123,6 +152,37 @@ export default function Profile() {
     );
   }
 
+  // Helper to create a blank social link
+  const blankSocial = () => ({
+    platform: "",
+    icon: "https://cdns-icons-png.flaticon.com/512/15047/15047435.png",
+    url: "",
+  });
+
+  // Open edit form and prefill with current card/profile data
+  const handleEditClick = () => {
+    const card = me?.data?.idCard?.[0];
+    setEditFormData({
+      avatar: avatarUrl,
+      gender: card?.gender || "male",
+      dob: card?.dob || "1995-06-15",
+      address: card?.address || "",
+      phone: card?.phone || "",
+      nationality: card?.nationality || "CAMBODIAN",
+      card_type: card?.card_type || "Modern",
+      social:
+        card?.socialLinks && card.socialLinks.length > 0
+          ? card.socialLinks.map((s) => ({
+              id: s.id,
+              platform: s.platform,
+              icon: s.icon,
+              url: s.url,
+            }))
+          : [blankSocial()],
+    });
+    setShowEditForm(true);
+  };
+
   return (
     <div className="min-h-screen mt-[-10rem] bg-gray-800">
       <div className="min-h-screen flex justify-center items-center p-4">
@@ -140,14 +200,50 @@ export default function Profile() {
               <div className="relative">
                 <div className="w-24 h-24 bg-gradient-to-br from-yellow-400 via-pink-400 to-purple-400 rounded-2xl rotate-12 flex items-center justify-center shadow-lg">
                   <Avatar className="w-24 h-24 border-4 border-white shadow-lg">
-                    <AvatarImage
-                      src={me?.data?.avatar}
-                      alt={me?.data?.user_name}
-                    />
+                    <AvatarImage src={avatarUrl} alt={me?.data?.user_name} />
                     <AvatarFallback className="text-2xl font-semibold bg-gradient-to-br from-blue-500 to-purple-600 text-white">
                       {me?.data?.user_name}
                     </AvatarFallback>
                   </Avatar>
+                  {/* Image upload input */}
+                  <label
+                    htmlFor="avatar-upload"
+                    className="absolute bottom-0 right-0 bg-white rounded-full p-1 shadow cursor-pointer border border-gray-300"
+                  >
+                    <input
+                      id="avatar-upload"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setUploading(true);
+                        const formData = new FormData();
+                        formData.append("image", file);
+                        try {
+                          const res = await axios.post(
+                            "/api/v1/upload/upload-image",
+                            formData,
+                            {
+                              headers: {
+                                "Content-Type": "multipart/form-data",
+                              },
+                            }
+                          );
+                          setAvatarUrl(res.data.url);
+                        } catch (err) {
+                          alert("Failed to upload image");
+                        } finally {
+                          setUploading(false);
+                        }
+                      }}
+                      disabled={uploading}
+                    />
+                    <span className="text-xs">
+                      {uploading ? "Uploading..." : "✏️"}
+                    </span>
+                  </label>
                 </div>
               </div>
             </div>
@@ -178,14 +274,13 @@ export default function Profile() {
                 Create Card
               </Button>
             )}
-            <Link href={`/update-card/${me?.data?.idCard?.[0]?.id ?? ""}`}>
-              <Button
-                variant="outline"
-                className="text-pink-500 border-pink-400"
-              >
-                Edit
-              </Button>
-            </Link>
+            <Button
+              variant="outline"
+              className="text-pink-500 border-pink-400"
+              onClick={handleEditClick}
+            >
+              Edit
+            </Button>
             <LogoutButton />
           </div>
 
@@ -336,6 +431,210 @@ export default function Profile() {
                     </Button>
                     <Button type="submit" className="bg-pink-500 text-white">
                       {createCardMutation.isPending ? "Creating..." : "Create"}
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Edit Card Modal/Form */}
+          {showEditForm && (
+            <div className="fixed inset-0 bg-white/30 backdrop-blur-sm flex items-center justify-center z-50">
+              <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-md">
+                <h2 className="text-xl font-bold mb-4">Edit Card</h2>
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    // Prepare payload for backend
+                    const payload = { ...editFormData };
+                    if (!payload.avatar) delete payload.avatar;
+                    updateCardMutation.mutate(payload);
+                  }}
+                  className="space-y-4"
+                >
+                  {/* Avatar preview removed. No upload functionality. */}
+                  <div>
+                    <label className="block font-medium">Gender</label>
+                    <select
+                      className="w-full border rounded p-2"
+                      value={editFormData?.gender || "male"}
+                      onChange={(e) =>
+                        setEditFormData((f: any) => ({
+                          ...f,
+                          gender: e.target.value,
+                        }))
+                      }
+                      title="Gender"
+                    >
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-medium">Date of Birth</label>
+                    <input
+                      type="date"
+                      className="w-full border rounded p-2"
+                      value={editFormData?.dob || ""}
+                      onChange={(e) =>
+                        setEditFormData((f: any) => ({
+                          ...f,
+                          dob: e.target.value,
+                        }))
+                      }
+                      title="Date of Birth"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium">Address</label>
+                    <input
+                      type="text"
+                      className="w-full border rounded p-2"
+                      value={editFormData?.address || ""}
+                      onChange={(e) =>
+                        setEditFormData((f: any) => ({
+                          ...f,
+                          address: e.target.value,
+                        }))
+                      }
+                      title="Address"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium">Phone</label>
+                    <input
+                      type="text"
+                      className="w-full border rounded p-2"
+                      value={editFormData?.phone || ""}
+                      onChange={(e) =>
+                        setEditFormData((f: any) => ({
+                          ...f,
+                          phone: e.target.value,
+                        }))
+                      }
+                      title="Phone"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium">Nationality</label>
+                    <input
+                      type="text"
+                      className="w-full border rounded p-2"
+                      value={editFormData?.nationality || ""}
+                      onChange={(e) =>
+                        setEditFormData((f: any) => ({
+                          ...f,
+                          nationality: e.target.value,
+                        }))
+                      }
+                      title="Nationality"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium">Card Type</label>
+                    <select
+                      className="w-full border rounded p-2"
+                      value={editFormData?.card_type || "Modern"}
+                      onChange={(e) =>
+                        setEditFormData((f: any) => ({
+                          ...f,
+                          card_type: e.target.value,
+                        }))
+                      }
+                      title="Card Type"
+                    >
+                      <option value="Modern">Modern</option>
+                      <option value="Corporate">Corporate</option>
+                      <option value="Minimal">Minimal</option>
+                    </select>
+                  </div>
+                  {/* Social Links Dynamic List */}
+                  <div>
+                    <label className="block font-medium mb-2">
+                      Social Links
+                    </label>
+                    {editFormData?.social?.map((social: any, idx: number) => (
+                      <div key={idx} className="flex gap-2 mb-2 items-center">
+                        <input
+                          type="text"
+                          className="border rounded p-2 flex-1"
+                          placeholder="Platform"
+                          value={social.platform}
+                          onChange={(e) =>
+                            setEditFormData((f: any) => {
+                              const updated = [...f.social];
+                              updated[idx].platform = e.target.value;
+                              return { ...f, social: updated };
+                            })
+                          }
+                        />
+                        <input
+                          type="text"
+                          className="border rounded p-2 flex-1"
+                          placeholder="URL"
+                          value={social.url}
+                          onChange={(e) =>
+                            setEditFormData((f: any) => {
+                              const updated = [...f.social];
+                              updated[idx].url = e.target.value;
+                              return { ...f, social: updated };
+                            })
+                          }
+                        />
+                        <input
+                          type="text"
+                          className="border rounded p-2 flex-1"
+                          placeholder="Icon URL"
+                          value={social.icon}
+                          onChange={(e) =>
+                            setEditFormData((f: any) => {
+                              const updated = [...f.social];
+                              updated[idx].icon = e.target.value;
+                              return { ...f, social: updated };
+                            })
+                          }
+                        />
+                        <button
+                          type="button"
+                          className="text-red-500 px-2"
+                          onClick={() =>
+                            setEditFormData((f: any) => ({
+                              ...f,
+                              social: f.social.filter(
+                                (_: any, i: number) => i !== idx
+                              ),
+                            }))
+                          }
+                          title="Remove Social"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      className="bg-pink-200 text-pink-700 px-3 py-1 rounded mt-2"
+                      onClick={() =>
+                        setEditFormData((f: any) => ({
+                          ...f,
+                          social: [...f.social, blankSocial()],
+                        }))
+                      }
+                    >
+                      + Add Social
+                    </button>
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowEditForm(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit" className="bg-pink-500 text-white">
+                      {updateCardMutation.isPending ? "Saving..." : "Save"}
                     </Button>
                   </div>
                 </form>
