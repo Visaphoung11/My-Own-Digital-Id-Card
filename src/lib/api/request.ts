@@ -132,4 +132,19 @@ axiosInstance.interceptors.response.use(
   }
 );
 
+// Card API utility
+export const cardRequest = () => {
+  const CREATE_CARD = async (payload: any) => {
+    return await axiosInstance({
+      url: "/card/create-card",
+      method: "POST",
+      data: payload,
+    });
+  };
+
+  return {
+    CREATE_CARD,
+  };
+};
+
 export default axiosInstance;

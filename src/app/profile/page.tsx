@@ -20,11 +20,42 @@ import LogoutButton from "@/components/ui/LogoutButton";
 import { useAuth } from "@/store/auth-store";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { cardRequest } from "@/lib/api/request";
+import { useState } from "react";
 
 export default function Profile() {
   const { PROFILE } = userRequest();
   const { accessToken, userId, isReady, isAuthenticated } = useAuth();
   const router = useRouter();
+  const { CREATE_CARD } = cardRequest();
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [formData, setFormData] = useState({
+    gender: "male",
+    dob: "1995-06-15",
+    address: "",
+    phone: "",
+    nationality: "CAMBODIAN",
+    card_type: "Modern",
+    social: [
+      {
+        platform: "facebook",
+        icon: "https://cdns-icons-png.flaticon.com/512/15047/15047435.png",
+        url: "",
+      },
+    ],
+  });
+
+  const createCardMutation = useMutation({
+    mutationFn: (payload: any) => CREATE_CARD(payload),
+    onSuccess: () => {
+      setShowCreateForm(false);
+      refetch();
+    },
+    onError: (err) => {
+      alert("Failed to create card");
+    },
+  });
 
   // Only redirect if ready and not authenticated
   useEffect(() => {
@@ -139,11 +170,14 @@ export default function Profile() {
 
           {/* Buttons */}
           <div className="flex justify-center gap-2">
-            <Link href="/create-card">
-              <Button className="bg-pink-500 hover:bg-pink-600 text-white">
+            {me?.data?.idCard?.length < 3 && (
+              <Button
+                className="bg-pink-500 hover:bg-pink-600 text-white"
+                onClick={() => setShowCreateForm(true)}
+              >
                 Create Card
               </Button>
-            </Link>
+            )}
             <Link href={`/update-card/${me?.data?.idCard?.[0]?.id ?? ""}`}>
               <Button
                 variant="outline"
@@ -154,6 +188,160 @@ export default function Profile() {
             </Link>
             <LogoutButton />
           </div>
+
+          {/* Create Card Modal/Form */}
+          {showCreateForm && (
+            <div className="fixed inset-0 bg-white/30 backdrop-blur-sm flex items-center justify-center z-50">
+              <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-md">
+                <h2 className="text-xl font-bold mb-4">Create Card</h2>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    createCardMutation.mutate({
+                      ...formData,
+                      email: me?.data?.email,
+                      password: "123456", // or prompt for password if needed
+                    });
+                  }}
+                  className="space-y-4"
+                >
+                  <div>
+                    <label className="block font-medium">Gender</label>
+                    <select
+                      className="w-full border rounded p-2"
+                      value={formData.gender}
+                      onChange={(e) =>
+                        setFormData((f) => ({ ...f, gender: e.target.value }))
+                      }
+                      title="Gender"
+                    >
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-medium">Date of Birth</label>
+                    <input
+                      type="date"
+                      className="w-full border rounded p-2"
+                      value={formData.dob}
+                      onChange={(e) =>
+                        setFormData((f) => ({ ...f, dob: e.target.value }))
+                      }
+                      title="Date of Birth"
+                      placeholder="YYYY-MM-DD"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium">Address</label>
+                    <input
+                      type="text"
+                      className="w-full border rounded p-2"
+                      value={formData.address}
+                      onChange={(e) =>
+                        setFormData((f) => ({ ...f, address: e.target.value }))
+                      }
+                      title="Address"
+                      placeholder="Enter your address"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium">Phone</label>
+                    <input
+                      type="text"
+                      className="w-full border rounded p-2"
+                      value={formData.phone}
+                      onChange={(e) =>
+                        setFormData((f) => ({ ...f, phone: e.target.value }))
+                      }
+                      title="Phone"
+                      placeholder="Enter your phone number"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium">Nationality</label>
+                    <input
+                      type="text"
+                      className="w-full border rounded p-2"
+                      value={formData.nationality}
+                      onChange={(e) =>
+                        setFormData((f) => ({
+                          ...f,
+                          nationality: e.target.value,
+                        }))
+                      }
+                      title="Nationality"
+                      placeholder="Enter your nationality"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium">Card Type</label>
+                    <select
+                      className="w-full border rounded p-2"
+                      value={formData.card_type}
+                      onChange={(e) =>
+                        setFormData((f) => ({
+                          ...f,
+                          card_type: e.target.value,
+                        }))
+                      }
+                      title="Card Type"
+                    >
+                      <option value="Modern">Modern</option>
+                      <option value="Corporate">Corporate</option>
+                      <option value="Minimal">Minimal</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-medium">Social Platform</label>
+                    <input
+                      type="text"
+                      className="w-full border rounded p-2"
+                      value={formData.social[0].platform}
+                      onChange={(e) =>
+                        setFormData((f) => ({
+                          ...f,
+                          social: [
+                            { ...f.social[0], platform: e.target.value },
+                          ],
+                        }))
+                      }
+                      title="Social Platform"
+                      placeholder="Enter social platform"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium">Social URL</label>
+                    <input
+                      type="text"
+                      className="w-full border rounded p-2"
+                      value={formData.social[0].url}
+                      onChange={(e) =>
+                        setFormData((f) => ({
+                          ...f,
+                          social: [{ ...f.social[0], url: e.target.value }],
+                        }))
+                      }
+                      title="Social URL"
+                      placeholder="Enter social URL"
+                    />
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowCreateForm(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit" className="bg-pink-500 text-white">
+                      {createCardMutation.isPending ? "Creating..." : "Create"}
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
 
           {/* Social Icons */}
           <div className="grid grid-cols-3 gap-2 text-center mt-4">
