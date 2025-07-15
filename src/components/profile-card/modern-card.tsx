@@ -71,6 +71,41 @@ const ModernCard = ({
             </div>
           </div>
 
+          {card.socialLinks && card.socialLinks.length > 0 && (
+            <div className="mt-4">
+              <h4 className="font-semibold mb-2">Social Links</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {card.socialLinks.map((social, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-2 p-2 bg-white/10 rounded-xl"
+                  >
+                    {social.icon && (
+                      <img
+                        src={social.icon}
+                        alt={social.platform}
+                        className="w-8 h-8 rounded-full object-cover border"
+                      />
+                    )}
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-medium truncate">
+                        {social.platform}
+                      </span>
+                      <a
+                        href={social.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-200 underline break-all text-xs truncate"
+                      >
+                        {social.url}
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <Button className="w-full bg-gradient-to-r from-orange-300 via-pink-300 to-purple-400 text-black font-bold shadow-lg">
             <Download className="w-4 h-4 mr-2" />
             Save My Contact
